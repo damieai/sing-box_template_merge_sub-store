@@ -135,11 +135,7 @@
       "tag": "AI",
       "type": "selector",
       "outbounds": [
-        "Japan",
-        "Singapore",
-        "TaiWan",
-        "America",
-        "Others"
+        "{all}"
       ]
     },
     {
