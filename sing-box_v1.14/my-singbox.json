@@ -117,7 +117,8 @@
       "type": "selector",
       "outbounds": [
         "auto",
-        "direct"
+        "direct",
+        "{all}"
       ]
     },
     {
@@ -125,12 +126,13 @@
       "type": "selector",
       "outbounds": [
         "auto",
-        "direct"
+        "direct",
+        "{all}"
       ],
       "default": "auto"
     },
     {
-      "tag": "OpenAI",
+      "tag": "AI",
       "type": "selector",
       "outbounds": [
         "Japan",
@@ -201,7 +203,8 @@
       "type": "selector",
       "outbounds": [
         "auto",
-        "direct"
+        "direct",
+        "{all}"
       ]
     },
     {
@@ -336,37 +339,107 @@
     {
       "tag": "HongKong",
       "type": "selector",
-      "outbounds": []
+      "outbounds": [
+        "{all}"
+      ],
+      "filter": [
+        {
+          "action": "include",
+          "keywords": [
+            "🇭🇰|HK|hk|香港|港|HongKong"
+          ]
+        }
+      ]
     },
     {
       "tag": "TaiWan",
       "type": "selector",
-      "outbounds": []
+      "outbounds": [
+        "{all}"
+      ],
+      "filter": [
+        {
+          "action": "include",
+          "keywords": [
+            "🇹🇼|TW|tw|台湾|臺灣|台|Taiwan"
+          ]
+        }
+      ]
     },
     {
       "tag": "Singapore",
       "type": "selector",
-      "outbounds": []
+      "outbounds": [
+        "{all}"
+      ],
+      "filter": [
+        {
+          "action": "include",
+          "keywords": [
+            "🇸🇬|SG|sg|新加坡|狮|Singapore"
+          ]
+        }
+      ]
     },
     {
       "tag": "Japan",
       "type": "selector",
-      "outbounds": []
+      "outbounds": [
+        "{all}"
+      ],
+      "filter": [
+        {
+          "action": "include",
+          "keywords": [
+            "🇯🇵|JP|jp|日本|日|Japan"
+          ]
+        }
+      ]
     },
     {
       "tag": "America",
       "type": "selector",
-      "outbounds": []
+      "outbounds": [
+        "{all}"
+      ],
+      "filter": [
+        {
+          "action": "include",
+          "keywords": [
+            "🇺🇸|US|us|美国|美|United States"
+          ]
+        }
+      ]
     },
     {
       "tag": "Others",
       "type": "selector",
-      "outbounds": []
+      "outbounds": [
+        "{all}"
+      ],
+      "filter": [
+        {
+          "action": "exclude",
+          "keywords": [
+            "🇭🇰|HK|hk|香港|香|🇹🇼|TW|tw|台湾|台|🇸🇬|SG|sg|新加坡|狮|🇯🇵|JP|jp|日本|日|🇺🇸|US|us|美国|美"
+          ]
+        }
+      ]
     },
     {
       "tag": "auto",
       "type": "urltest",
-      "outbounds": [],
+      "outbounds": [
+        "{all}"
+      ],
+      "filter": [
+        {
+          "action": "exclude",
+          "keywords": [
+            "网站|地址|剩余|过期|时间|有效"
+          ]
+        }
+      ],
       "url": "http://www.gstatic.com/generate_204",
       "interval": "10m",
       "tolerance": 50
@@ -455,8 +528,8 @@
         "outbound": "vpn"
       },
       {
-        "rule_set": "geosite-openai",
-        "outbound": "OpenAI"
+        "rule_set": "geosite-ai",
+        "outbound": "AI"
       },
       {
         "rule_set": [
@@ -562,10 +635,10 @@
         "download_detour": "direct"
       },
       {
-        "tag": "geosite-openai",
+        "tag": "geosite-ai",
         "type": "remote",
-        "format": "binary",
-        "url": "https://gh-proxy.com/https://raw.githubusercontent.com/Toperlock/sing-box-geosite/main/rule/OpenAI.srs",
+        "format": "source",
+        "url": "https://gh-proxy.com/https://raw.githubusercontent.com/Repcz/Tool/X/sing-box/Rules/AI.json",
         "download_detour": "direct"
       },
       {
