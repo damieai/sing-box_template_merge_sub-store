@@ -1,0 +1,430 @@
+{
+  "http_clients": [
+    {
+      "tag": "proxy-client",
+      "detour": "Default"
+    }
+  ],
+  "services": [
+    {
+      "type": "api",
+      "tag": "api",
+      "listen": "0.0.0.0",
+      "listen_port": 9090,
+      "secret": "",
+      "access_control_allow_origin": [],
+      "access_control_allow_private_network": false,
+      "dashboard": {
+        "enabled": true,
+        "path": "dashboard",
+        "download_url": "https://github.com/Zephyruso/zashboard/releases/download/v3.22.0/dist.zip",
+        "http_client": "proxy-client",
+        "update_interval": "7d"
+      },
+      "tls": {}
+    }
+  ],
+  "experimental": {
+    "cache_file": {
+      "enabled": true
+    }
+  },
+  "log": {
+    "level": "info",
+    "timestamp": true
+  },
+  "dns": {
+    "servers": [
+      {
+        "tag": "proxy_dns",
+        "type": "https",
+        "server": "8.8.8.8",
+        "detour": "Default"
+      },
+      {
+        "tag": "cn_dns",
+        "type": "udp",
+        "server": "114.114.114.114"
+      },
+      {
+        "tag": "fake_dns",
+        "type": "fakeip",
+        "inet4_range": "11.0.0.0/16",
+        "inet6_range": "3ffe::/16"
+      }
+    ],
+    "rules": [
+      {
+        "rule_set": "gfw",
+        "query_type": ["A", "AAAA"],
+        "action": "route",
+        "server": "fake_dns"
+      },
+      {
+        "type": "logical",
+        "mode": "or",
+        "action": "route",
+        "rules": [
+          {
+            "domain_suffix": [".cn"]
+          },
+          {
+            "domain_keyword": ["stun", "turn"]
+          },
+          {
+            "rule_set": "cnsite"
+          }
+        ],
+        "server": "cn_dns"
+      },
+      {
+        "action": "evaluate",
+        "server": "proxy_dns"
+      },
+      {
+        "match_response": true,
+        "rule_set": "cnip",
+        "action": "route",
+        "server": "cn_dns"
+      },
+      {
+        "action": "route",
+        "query_type": ["A", "AAAA"],
+        "server": "fake_dns",
+        "rewrite_ttl": 1
+      }
+    ]
+  },
+  "inbounds": [
+    {
+      "type": "tun",
+      "tag": "tun-in",
+      "interface_name": "singbox_tun",
+      "address": ["172.18.0.1/30", "fdfe:dcba:9876::1/126"],
+      "mtu": 9000,
+      "auto_route": true,
+      "route_exclude_address": ["10.0.0.0/8", "100.64.0.0/10", "169.254.0.0/16", "172.16.0.0/12", "192.0.0.0/24", "192.168.0.0/16"],
+      "strict_route": true,
+      "auto_redirect": true
+    },
+    {
+      "type": "mixed",
+      "tag": "mixed-in",
+      "listen": "127.0.0.1",
+      "listen_port": 7890
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "selector",
+      "tag": "Default",
+      "outbounds": ["Auto", "Direct-Out"]
+    },
+    {
+      "type": "urltest",
+      "tag": "Auto",
+      "outbounds": [],
+      "interval": "3m",
+      "tolerance": 30
+    },
+    {
+      "type": "selector",
+      "tag": "Relay",
+      "outbounds": ["Direct-Out"]
+    },
+    {
+      "type": "selector",
+      "tag": "PayPal",
+      "outbounds": ["Default", "Auto"]
+    },
+    {
+      "type": "selector",
+      "tag": "AI-Service",
+      "outbounds": ["Default", "Auto"]
+    },
+    {
+      "type": "selector",
+      "tag": "TikTok",
+      "outbounds": ["Default", "Auto"]
+    },
+    {
+      "type": "selector",
+      "tag": "Streaming-Media",
+      "outbounds": ["Default", "Auto"]
+    },
+    {
+      "type": "selector",
+      "tag": "Telegram",
+      "outbounds": ["Default", "Auto"]
+    },
+    {
+      "type": "selector",
+      "tag": "Instagram",
+      "outbounds": ["Default", "Auto"]
+    },
+    {
+      "type": "selector",
+      "tag": "Emby",
+      "outbounds": ["Default", "Auto", "Direct-Out"]
+    },
+    {
+      "type": "direct",
+      "tag": "Direct-Out"
+    }
+  ],
+  "route": {
+    "final": "Default",
+    "auto_detect_interface": true,
+    "default_http_client": "proxy-client",
+    "default_domain_resolver": {
+      "server": "cn_dns"
+    },
+    "rule_set": [
+      {
+        "tag": "cnsite",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/sing/geo/geosite/cn.srs",
+        "update_interval": "24h"
+      },
+      {
+        "tag": "cnip",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/sing/geo/geoip/cn.srs",
+        "update_interval": "24h"
+      },
+      {
+        "tag": "cngames",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/sing/geo/geosite/category-games-!cn@cn.srs",
+        "update_interval": "24h"
+      },
+      {
+        "tag": "gfw",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/sing/geo/geosite/gfw.srs",
+        "update_interval": "24h"
+      },
+      {
+        "tag": "aiservice",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/sing/geo/geosite/category-ai-!cn.srs",
+        "update_interval": "24h"
+      },
+      {
+        "tag": "paypal",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/sing/geo/geosite/paypal.srs",
+        "update_interval": "24h"
+      },
+      {
+        "tag": "tiktok",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/sing/geo/geosite/tiktok.srs",
+        "update_interval": "24h"
+      },
+      {
+        "tag": "instagram",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/sing/geo/geosite/instagram.srs",
+        "update_interval": "24h"
+      },
+      {
+        "tag": "telegramip",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/sing/geo/geoip/telegram.srs",
+        "update_interval": "24h"
+      },
+      {
+        "tag": "telegramsite",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/sing/geo/geosite/telegram.srs",
+        "update_interval": "24h"
+      },
+      {
+        "tag": "netflixsite",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/sing/geo/geosite/netflix.srs",
+        "update_interval": "24h"
+      },
+      {
+        "tag": "netflixip",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/sing/geo/geoip/netflix.srs",
+        "update_interval": "24h"
+      },
+      {
+        "tag": "disney",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/sing/geo/geosite/disney.srs",
+        "update_interval": "24h"
+      },
+      {
+        "tag": "hbo",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/sing/geo/geosite/hbo.srs",
+        "update_interval": "24h"
+      },
+      {
+        "tag": "hulu",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/sing/geo/geosite/hulu.srs",
+        "update_interval": "24h"
+      },
+      {
+        "tag": "emby",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/sing/geo/geosite/category-emby.srs",
+        "update_interval": "24h"
+      }
+    ],
+    "rules": [
+      {
+        "type": "logical",
+        "mode": "and",
+        "rules": [
+          {
+            "port": 443
+          },
+          {
+            "network": "udp"
+          }
+        ],
+        "action": "reject"
+      },
+      {
+        "network": "icmp",
+        "action": "route",
+        "outbound": "Direct-Out"
+      },
+      {
+        "action": "sniff"
+      },
+      {
+        "type": "logical",
+        "mode": "or",
+        "rules": [
+          {
+            "protocol": "dns"
+          },
+          {
+            "port": 53
+          }
+        ],
+        "action": "hijack-dns"
+      },
+      {
+        "ip_is_private": true,
+        "action": "route",
+        "outbound": "Direct-Out"
+      },
+      {
+        "protocol": "quic",
+        "action": "reject"
+      },
+      {
+        "protocol": "bittorrent",
+        "action": "route",
+        "outbound": "Direct-Out"
+      },
+      {
+        "port": [3478, 5201],
+        "action": "route",
+        "outbound": "Direct-Out"
+      },
+      {
+        "domain_suffix": ["ileidian.com", "ottiptv.cc", "xiuxitong.com", "pc528.net"],
+        "action": "route",
+        "outbound": "Direct-Out"
+      },
+      {
+        "domain_suffix": ["uhdnow.com"],
+        "action": "route",
+        "outbound": "Emby"
+      },
+      {
+        "rule_set": "emby",
+        "action": "route",
+        "outbound": "Emby"
+      },
+      {
+        "rule_set": "paypal",
+        "action": "route",
+        "outbound": "PayPal"
+      },
+      {
+        "rule_set": "telegramsite",
+        "action": "route",
+        "outbound": "Telegram"
+      },
+      {
+        "rule_set": "tiktok",
+        "action": "route",
+        "outbound": "TikTok"
+      },
+      {
+        "rule_set": "instagram",
+        "action": "route",
+        "outbound": "Instagram"
+      },
+      {
+        "rule_set": "aiservice",
+        "action": "route",
+        "outbound": "AI-Service"
+      },
+      {
+        "domain_suffix": "sexlikereal.com",
+        "action": "route",
+        "outbound": "Streaming-Media"
+      },
+      {
+        "rule_set": ["netflixsite", "hbo", "disney", "hulu"],
+        "action": "route",
+        "outbound": "Streaming-Media"
+      },
+      {
+        "rule_set": "cngames",
+        "action": "route",
+        "outbound": "Direct-Out"
+      },
+      {
+        "rule_set": "gfw",
+        "action": "route",
+        "outbound": "Default"
+      },
+      {
+        "action": "resolve"
+      },
+      {
+        "rule_set": "telegramip",
+        "action": "route",
+        "outbound": "Telegram"
+      },
+      {
+        "rule_set": "netflixip",
+        "action": "route",
+        "outbound": "Streaming-Media"
+      },
+      {
+        "rule_set": "cnip",
+        "action": "route",
+        "outbound": "Direct-Out"
+      }
+    ]
+  }
+}
