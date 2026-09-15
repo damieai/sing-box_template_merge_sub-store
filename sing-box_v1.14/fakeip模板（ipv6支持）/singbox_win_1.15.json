@@ -17,7 +17,7 @@
       "dashboard": {
         "enabled": true,
         "path": "dashboard",
-        "download_url": "https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip",
+        "download_url": "https://github.com/Zephyruso/zashboard/releases/download/v3.22.0/dist.zip",
         "http_client": "proxy-client",
         "update_interval": "7d"
       },
