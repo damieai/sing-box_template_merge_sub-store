@@ -1,223 +1,899 @@
-// Sub-Store 文件处理脚本：替换旧 merge.js，参数 name/type/rules 保持原用法。
-// 只展开含 {all} 的分组；filter 在输出前移除。
-// 无匹配节点的空组会删除，并清理引用。
+/**
+ * Sub-Store merge script
+ *
+ * Target:
+ *   wuziwei/sing-box-config-template
+ *   client template/client sb-1.15.json
+ *
+ * Purpose:
+ *   让 wuziwei 的 sing-box 1.15 模板真正适配 Sub-Store 动态订阅。
+ *
+ * 核心原则：
+ *   1. 不修改模板的 DNS / Route / Rule Set / Inbound 等设计。
+ *   2. 动态插入 Sub-Store 真实订阅节点。
+ *   3. 删除模板策略组中引用但实际上不存在的示例节点。
+ *   4. Latency 只放 JP/KR。
+ *   5. Bandwidth 只放 US/CA。
+ *   6. 其他普通策略组加入全部真实节点。
+ *   7. Relay 只加入无 detour 的终端节点。
+ *   8. 自动修复失效 default。
+ *   9. 最终执行 outbound dependency 完整性检查。
+ */
 
-const { name, type = "0", rules: rules_file } = $arguments;
+const {
+  name,
+  type = "0",
+  rules: rules_file
+} = $arguments;
 
-// 1. 读取模板
-let config = JSON.parse($files[0]);
 
-// 2. 追加自定义规则
+// ============================================================
+// 0. 基础工具
+// ============================================================
+
+function unique(arr) {
+  return [...new Set(arr)];
+}
+
+function hasText(text, patterns) {
+  const value = String(text || "").toLowerCase();
+
+  return patterns.some(pattern => {
+    if (pattern instanceof RegExp) {
+      return pattern.test(value);
+    }
+
+    return value.includes(String(pattern).toLowerCase());
+  });
+}
+
+
+// ============================================================
+// 1. 地区识别
+//
+// 目标不是强制修改节点名称。
+// 只是根据节点 tag 判断属于哪个地区。
+// ============================================================
+
+const REGION_PATTERNS = {
+
+  JP: [
+    "🇯🇵",
+    "日本",
+    "东京",
+    "大阪",
+    "埼玉",
+    "Japan",
+    "Tokyo",
+    "Osaka",
+    /\bjp\b/i,
+    /\bjpn\b/i
+  ],
+
+  KR: [
+    "🇰🇷",
+    "韩国",
+    "韓國",
+    "首尔",
+    "首爾",
+    "Korea",
+    "Seoul",
+    /\bkr\b/i,
+    /\bkor\b/i
+  ],
+
+  US: [
+    "🇺🇸",
+    "美国",
+    "美國",
+    "美西",
+    "美东",
+    "美東",
+    "洛杉矶",
+    "洛杉磯",
+    "圣何塞",
+    "聖何塞",
+    "西雅图",
+    "西雅圖",
+    "纽约",
+    "紐約",
+    "达拉斯",
+    "達拉斯",
+    "芝加哥",
+    "United States",
+    "America",
+    "Los Angeles",
+    "San Jose",
+    "Seattle",
+    "New York",
+    "Dallas",
+    "Chicago",
+    /\bus\b/i,
+    /\busa\b/i
+  ],
+
+  CA: [
+    "🇨🇦",
+    "加拿大",
+    "Canada",
+    "Toronto",
+    "Vancouver",
+    "Montreal",
+    "多伦多",
+    "多倫多",
+    "温哥华",
+    "溫哥華",
+    "蒙特利尔",
+    "蒙特利爾",
+    /\bca\b/i,
+    /\bcan\b/i
+  ],
+
+  HK: [
+    "🇭🇰",
+    "香港",
+    "Hong Kong",
+    "HongKong",
+    /\bhk\b/i,
+    /\bhkg\b/i
+  ],
+
+  TW: [
+    "🇹🇼",
+    "台湾",
+    "台灣",
+    "Taiwan",
+    "Taipei",
+    "台北",
+    /\btw\b/i,
+    /\btwn\b/i
+  ],
+
+  SG: [
+    "🇸🇬",
+    "新加坡",
+    "狮城",
+    "獅城",
+    "Singapore",
+    /\bsg\b/i,
+    /\bsgp\b/i
+  ],
+
+  GB: [
+    "🇬🇧",
+    "英国",
+    "英國",
+    "伦敦",
+    "倫敦",
+    "United Kingdom",
+    "Britain",
+    "London",
+    /\buk\b/i,
+    /\bgb\b/i
+  ],
+
+  DE: [
+    "🇩🇪",
+    "德国",
+    "德國",
+    "Germany",
+    "Frankfurt",
+    "法兰克福",
+    "法蘭克福",
+    /\bde\b/i
+  ],
+
+  FR: [
+    "🇫🇷",
+    "法国",
+    "法國",
+    "France",
+    "Paris",
+    "巴黎",
+    /\bfr\b/i
+  ],
+
+  AU: [
+    "🇦🇺",
+    "澳大利亚",
+    "澳大利亞",
+    "澳洲",
+    "Australia",
+    "Sydney",
+    "Melbourne",
+    "悉尼",
+    "墨尔本",
+    "墨爾本",
+    /\bau\b/i
+  ]
+};
+
+
+function detectRegion(tag) {
+
+  for (const [region, patterns] of Object.entries(REGION_PATTERNS)) {
+
+    if (hasText(tag, patterns)) {
+      return region;
+    }
+  }
+
+  return "OTHER";
+}
+
+
+// ============================================================
+// 2. 读取模板
+// ============================================================
+
+if (!$files || !$files[0]) {
+  throw new Error("没有读取到 Sub-Store 模板文件");
+}
+
+let config;
+
+try {
+  config = JSON.parse($files[0]);
+} catch (e) {
+  throw new Error(
+    "模板不是有效 JSON: " + e.message
+  );
+}
+
+if (!Array.isArray(config.outbounds)) {
+  throw new Error(
+    "模板中不存在有效的 outbounds 数组"
+  );
+}
+
+
+// ============================================================
+// 3. 可选：插入自定义规则
+//
+// 保留 LongLights merge.js 的 rules 参数能力。
+// ============================================================
+
 if (rules_file) {
+
   try {
-    let customRulesRaw = await produceArtifact({
+
+    const raw = await produceArtifact({
       type: "file",
-      name: rules_file,
+      name: rules_file
     });
 
-    if (customRulesRaw) {
-      let customRules = JSON.parse(customRulesRaw);
+    if (raw) {
 
-      let idx = config.route.rules.findIndex(
-        r => r.clash_mode === "global"
-      );
+      const customRules = JSON.parse(raw);
 
-      if (idx !== -1) {
-        const existingRulesStr = new Set(
-          config.route.rules.map(r => JSON.stringify(r))
+      if (
+        Array.isArray(customRules) &&
+        config.route &&
+        Array.isArray(config.route.rules)
+      ) {
+
+        const existing = new Set(
+          config.route.rules.map(
+            rule => JSON.stringify(rule)
+          )
         );
 
-        customRules = customRules.filter(
-          r => !existingRulesStr.has(JSON.stringify(r))
+        const newRules = customRules.filter(
+          rule => !existing.has(
+            JSON.stringify(rule)
+          )
         );
 
-        config.route.rules.splice(idx + 1, 0, ...customRules);
-      } else {
-        config.route.rules.push(...customRules);
+        const globalIndex =
+          config.route.rules.findIndex(
+            rule =>
+              typeof rule.clash_mode === "string" &&
+              rule.clash_mode.toLowerCase() === "global"
+          );
+
+        if (globalIndex >= 0) {
+
+          config.route.rules.splice(
+            globalIndex + 1,
+            0,
+            ...newRules
+          );
+
+        } else {
+
+          config.route.rules.push(
+            ...newRules
+          );
+        }
       }
     }
+
   } catch (e) {
-    // 保持原版行为：读取或解析失败时跳过自定义规则。
+
+    console.log(
+      "[WARN] 自定义 rules 加载失败，继续生成配置: " +
+      e.message
+    );
   }
 }
 
-// 3. 拉取订阅或合集节点
+
+// ============================================================
+// 4. 从 Sub-Store 获取订阅节点
+// ============================================================
+
 let proxies = await produceArtifact({
+
   name,
-  type: /^1$|col/i.test(type) ? "collection" : "subscription",
+
+  type:
+    /^1$|col/i.test(type)
+      ? "collection"
+      : "subscription",
+
   platform: "sing-box",
-  produceType: "internal",
+
+  produceType: "internal"
 });
 
-if (!Array.isArray(proxies) || proxies.length === 0) {
+
+if (!Array.isArray(proxies)) {
+
   throw new Error(
-    "订阅没有返回节点，请检查 name/type 参数和订阅内容。"
+    "Sub-Store 没有返回有效的 sing-box 节点数组"
   );
 }
 
-const groups = config.outbounds;
-const reserved = new Set(groups.map(o => o.tag));
-const seen = new Set();
 
-proxies = proxies.filter(p => {
-  if (!p || typeof p.tag !== "string" || !p.tag) {
-    throw new Error("订阅包含没有 tag 的节点。");
-  }
+// ============================================================
+// 5. 基础节点清理
+// ============================================================
 
-  if (reserved.has(p.tag)) {
-    throw new Error(
-      `节点名称与模板出站重名：${p.tag}，请在订阅中重命名。`
+proxies = proxies.filter(
+  proxy =>
+    proxy &&
+    typeof proxy === "object" &&
+    typeof proxy.tag === "string" &&
+    proxy.tag.trim() !== ""
+);
+
+
+// ============================================================
+// 6. 获取模板原始 outbound tags
+// ============================================================
+
+const templateTags = new Set(
+
+  config.outbounds
+
+    .filter(
+      outbound =>
+        outbound &&
+        typeof outbound.tag === "string"
+    )
+
+    .map(
+      outbound => outbound.tag
+    )
+);
+
+
+// ============================================================
+// 7. 防止订阅节点和模板 tag 冲突
+//
+// 例如订阅节点恰好叫：
+// direct
+// GLOBAL
+// Relay
+// ✈️proxy
+//
+// 这种节点不能覆盖模板策略组。
+// ============================================================
+
+proxies = proxies.filter(
+  proxy =>
+    !templateTags.has(proxy.tag)
+);
+
+
+// ============================================================
+// 8. 订阅节点 tag 去重
+//
+// sing-box outbound tag 应保持唯一。
+// ============================================================
+
+const proxyMap = new Map();
+
+for (const proxy of proxies) {
+
+  if (!proxyMap.has(proxy.tag)) {
+    proxyMap.set(
+      proxy.tag,
+      proxy
     );
   }
+}
 
-  if (seen.has(p.tag)) return false;
+proxies = [...proxyMap.values()];
 
-  seen.add(p.tag);
-  return true;
-});
 
-// 4. 仅在显式 {all} 的位置注入节点。
-// 其他策略组保持模板原有的入口，不额外追加全部节点。
-for (const group of groups) {
-  const filters = group.filter || [];
+if (proxies.length === 0) {
 
-  if (!Array.isArray(filters)) {
-    throw new Error(`${group.tag}: filter 必须是数组。`);
-  }
+  throw new Error(
+    "订阅中没有可使用的有效节点"
+  );
+}
 
-  const predicates = filters.map(f => {
-    if (
-      !["include", "exclude"].includes(f.action) ||
-      !Array.isArray(f.keywords)
-    ) {
-      throw new Error(`${group.tag}: 不支持的 filter 格式。`);
-    }
 
-    // keywords 中每个字符串按正则表达式处理。
-    // 同一条规则内 OR，多条规则之间 AND。
-    const patterns = f.keywords.map(
-      pattern => new RegExp(pattern)
+// ============================================================
+// 9. 地区分类
+// ============================================================
+
+const regions = {
+  JP: [],
+  KR: [],
+  US: [],
+  CA: [],
+  HK: [],
+  TW: [],
+  SG: [],
+  GB: [],
+  DE: [],
+  FR: [],
+  AU: [],
+  OTHER: []
+};
+
+
+for (const proxy of proxies) {
+
+  const region =
+    detectRegion(proxy.tag);
+
+  regions[region].push(
+    proxy.tag
+  );
+}
+
+
+// ============================================================
+// 10. 创建几个常用集合
+// ============================================================
+
+const allProxyTags =
+  proxies.map(
+    proxy => proxy.tag
+  );
+
+
+const terminalProxyTags =
+  proxies
+
+    .filter(
+      proxy => !proxy.detour
+    )
+
+    .map(
+      proxy => proxy.tag
     );
 
-    return tag => {
-      const matches = patterns.some(
-        pattern => pattern.test(tag)
+
+const jpKrTags = unique([
+  ...regions.JP,
+  ...regions.KR
+]);
+
+
+const usCaTags = unique([
+  ...regions.US,
+  ...regions.CA
+]);
+
+
+// ============================================================
+// 11. 把真实订阅节点加入最终 outbounds
+// ============================================================
+
+config.outbounds.push(
+  ...proxies
+);
+
+
+// ============================================================
+// 12. 构建最终合法 outbound tag 集合
+// ============================================================
+
+let validTags = new Set(
+
+  config.outbounds
+
+    .filter(
+      outbound =>
+        outbound &&
+        typeof outbound.tag === "string"
+    )
+
+    .map(
+      outbound => outbound.tag
+    )
+);
+
+
+// ============================================================
+// 13. 第一轮清理模板幽灵节点
+//
+// 例如模板：
+//
+// ⚡️Latency
+// ├── 🇯🇵JP1-hy2    存在
+// ├── 🇯🇵JP2-hy2    不存在
+// └── 🇰🇷SK1-hy2    不存在
+//
+// 后两个直接删除。
+// ============================================================
+
+for (const group of config.outbounds) {
+
+  if (!Array.isArray(group.outbounds)) {
+    continue;
+  }
+
+  group.outbounds =
+    group.outbounds.filter(
+      tag => validTags.has(tag)
+    );
+}
+
+
+// ============================================================
+// 14. 策略组注入规则
+//
+// 这是本适配器最关键的一部分。
+// ============================================================
+
+for (const group of config.outbounds) {
+
+  if (!Array.isArray(group.outbounds)) {
+    continue;
+  }
+
+
+  // ----------------------------------------------------------
+  // Direct-Out
+  //
+  // 保持模板原样。
+  // ----------------------------------------------------------
+
+  if (group.tag === "Direct-Out") {
+    continue;
+  }
+
+
+  // ----------------------------------------------------------
+  // Relay
+  //
+  // 只能添加无 detour 的 terminal 节点。
+  //
+  // 否则可能形成：
+//
+// Relay
+//   ↓
+// node(detour=Relay)
+//   ↓
+// Relay
+//
+// 的递归依赖。
+// ----------------------------------------------------------
+
+  if (group.tag === "Relay") {
+
+    group.outbounds.push(
+      ...terminalProxyTags
+    );
+
+    group.outbounds =
+      unique(group.outbounds);
+
+    continue;
+  }
+
+
+  // ----------------------------------------------------------
+  // Latency JP/KR
+  //
+  // 专门针对模板：
+//
+// ⚡️Latency(🇯🇵/🇰🇷)
+//
+// 只加入日本、韩国。
+// ----------------------------------------------------------
+
+  if (
+    group.tag.includes("Latency") &&
+    (
+      group.tag.includes("🇯🇵") ||
+      group.tag.includes("🇰🇷")
+    )
+  ) {
+
+    if (jpKrTags.length > 0) {
+
+      group.outbounds.push(
+        ...jpKrTags
       );
 
-      return f.action === "include" ? matches : !matches;
-    };
-  });
+    } else {
 
-  if (Array.isArray(group.outbounds)) {
-    const selected = proxies
-      .filter(p => predicates.every(test => test(p.tag)))
-      .map(p => p.tag);
+      // 如果机场节点名称完全无法识别地区，
+      // 不让 urltest 变成空组。
+      //
+      // fallback = 全节点
 
-    group.outbounds = [
-      ...new Set(
-        group.outbounds.flatMap(
-          tag => tag === "{all}" ? selected : [tag]
-        )
-      ),
-    ];
-  }
+      console.log(
+        "[WARN] 无法识别 JP/KR 节点，Latency 使用全部节点作为 fallback"
+      );
 
-  // filter 是模板字段，不能留在最终核心配置中。
-  delete group.filter;
-}
-
-config.outbounds.push(...proxies);
-
-// 5. 删除空分组并递归清理引用。
-// 不把空地区组自动填成全部节点或直连。
-let changed;
-
-do {
-  changed = false;
-
-  const empty = new Set(
-    config.outbounds
-      .filter(
-        o =>
-          ["selector", "urltest"].includes(o.type) &&
-          Array.isArray(o.outbounds) &&
-          o.outbounds.length === 0
-      )
-      .map(o => o.tag)
-  );
-
-  if (empty.size) {
-    changed = true;
-
-    config.outbounds = config.outbounds.filter(
-      o => !empty.has(o.tag)
-    );
-
-    for (const o of config.outbounds) {
-      if (Array.isArray(o.outbounds)) {
-        o.outbounds = o.outbounds.filter(
-          tag => !empty.has(tag)
-        );
-      }
-    }
-  }
-} while (changed);
-
-// 6. 检查分组引用，修复已被移除的默认选项。
-const tags = new Set(config.outbounds.map(o => o.tag));
-
-for (const o of config.outbounds) {
-  if (Array.isArray(o.outbounds)) {
-    for (const tag of o.outbounds) {
-      if (!tags.has(tag)) {
-        throw new Error(
-          `${o.tag}: 引用了不存在的出站 ${tag}`
-        );
-      }
-    }
-
-    if (o.default && !o.outbounds.includes(o.default)) {
-      o.default = o.outbounds[0];
-    }
-  }
-}
-
-// 7. 检查路由、下载和 DNS 等位置的出站引用。
-function checkReferences(value) {
-  if (!value || typeof value !== "object") return;
-
-  if (Array.isArray(value)) {
-    return value.forEach(checkReferences);
-  }
-
-  for (const [key, item] of Object.entries(value)) {
-    if (
-      [
-        "outbound",
-        "detour",
-        "download_detour",
-        "external_ui_download_detour",
-      ].includes(key) &&
-      typeof item === "string" &&
-      item &&
-      !tags.has(item)
-    ) {
-      throw new Error(
-        `${key}: 出站 ${item} 不存在或没有匹配节点，请检查订阅。`
+      group.outbounds.push(
+        ...allProxyTags
       );
     }
 
-    checkReferences(item);
+    group.outbounds =
+      unique(group.outbounds);
+
+    continue;
+  }
+
+
+  // ----------------------------------------------------------
+  // Bandwidth US/CA
+  //
+  // 专门针对模板：
+//
+// 🚀Bandwidth(🇺🇸/🇨🇦)
+//
+// 只加入美国、加拿大。
+// ----------------------------------------------------------
+
+  if (
+    group.tag.includes("Bandwidth") &&
+    (
+      group.tag.includes("🇺🇸") ||
+      group.tag.includes("🇨🇦")
+    )
+  ) {
+
+    if (usCaTags.length > 0) {
+
+      group.outbounds.push(
+        ...usCaTags
+      );
+
+    } else {
+
+      console.log(
+        "[WARN] 无法识别 US/CA 节点，Bandwidth 使用全部节点作为 fallback"
+      );
+
+      group.outbounds.push(
+        ...allProxyTags
+      );
+    }
+
+    group.outbounds =
+      unique(group.outbounds);
+
+    continue;
+  }
+
+
+  // ----------------------------------------------------------
+  // 普通 selector / urltest
+  //
+  // Spotify / YouTube / Proxy / GLOBAL 等，
+  // 都允许用户选择真实订阅节点。
+  // ----------------------------------------------------------
+
+  group.outbounds.push(
+    ...allProxyTags
+  );
+
+  group.outbounds =
+    unique(group.outbounds);
+}
+
+
+// ============================================================
+// 15. 再次过滤不存在 dependency
+// ============================================================
+
+for (const group of config.outbounds) {
+
+  if (!Array.isArray(group.outbounds)) {
+    continue;
+  }
+
+  group.outbounds =
+    group.outbounds.filter(
+      tag => validTags.has(tag)
+    );
+}
+
+
+// ============================================================
+// 16. 修复 selector default
+//
+// 如果模板：
+//
+// default: 🇯🇵JP2-hy2
+//
+// 但这个节点已经不存在，
+// 则自动选择当前 selector 的第一个有效 outbound。
+// ============================================================
+
+for (const group of config.outbounds) {
+
+  if (
+    group.type !== "selector" ||
+    !Array.isArray(group.outbounds)
+  ) {
+    continue;
+  }
+
+
+  if (
+    group.default &&
+    !group.outbounds.includes(
+      group.default
+    )
+  ) {
+
+    if (group.outbounds.length > 0) {
+
+      group.default =
+        group.outbounds[0];
+
+    } else {
+
+      delete group.default;
+    }
   }
 }
 
-checkReferences(config);
 
-if (config.route?.final && !tags.has(config.route.final)) {
-  throw new Error(
-    `route.final: 出站 ${config.route.final} 不存在。`
+// ============================================================
+// 17. 空策略组保护
+// ============================================================
+
+for (const group of config.outbounds) {
+
+  if (
+    !["selector", "urltest"].includes(
+      group.type
+    )
+  ) {
+    continue;
+  }
+
+
+  if (!Array.isArray(group.outbounds)) {
+    group.outbounds = [];
+  }
+
+
+  if (group.outbounds.length === 0) {
+
+    console.log(
+      `[WARN] ${group.tag} 为空，使用全部订阅节点 fallback`
+    );
+
+    group.outbounds.push(
+      ...allProxyTags
+    );
+
+
+    if (
+      group.type === "selector" &&
+      !group.default
+    ) {
+
+      group.default =
+        allProxyTags[0];
+    }
+  }
+}
+
+
+// ============================================================
+// 18. selector default 第二次检查
+// ============================================================
+
+for (const group of config.outbounds) {
+
+  if (
+    group.type !== "selector" ||
+    !Array.isArray(group.outbounds)
+  ) {
+    continue;
+  }
+
+
+  if (
+    group.default &&
+    !group.outbounds.includes(
+      group.default
+    )
+  ) {
+
+    group.default =
+      group.outbounds[0];
+  }
+}
+
+
+// ============================================================
+// 19. 检查重复 outbound tag
+// ============================================================
+
+const tagCounter = new Map();
+
+
+for (const outbound of config.outbounds) {
+
+  if (
+    !outbound ||
+    typeof outbound.tag !== "string"
+  ) {
+    continue;
+  }
+
+
+  tagCounter.set(
+    outbound.tag,
+    (tagCounter.get(outbound.tag) || 0) + 1
   );
 }
 
-// 8. 输出最终配置
-$content = JSON.stringify(config, null, 2);
+
+const duplicatedTags =
+  [...tagCounter.entries()]
+
+    .filter(
+      ([_, count]) => count > 1
+    )
+
+    .map(
+      ([tag]) => tag
+    );
+
+
+if (duplicatedTags.length > 0) {
+
+  throw new Error(
+    "发现重复 outbound tag:\n" +
+    duplicatedTags.join("\n")
+  );
+}
+
+
+// ============================================================
+// 20. 最终 dependency 完整性检查
+// ============================================================
+
+const finalTags = new Set(
+
+  config.outbounds
+
+    .filter(
+      outbound =>
+        outbound &&
+        typeof outbound.tag === "string"
+    )
+
+    .map(
+      outbound => outbound.tag
+    )
+);
+
+
+const
