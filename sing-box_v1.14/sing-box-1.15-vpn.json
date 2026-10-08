@@ -1,0 +1,814 @@
+{
+  "$schema": "https://sing-box.sagernet.org/schema.json",
+  "log": {
+    "disabled": false,
+    "level": "info",
+    "timestamp": true
+  },
+  "dns": {
+    "servers": [
+      {
+        "type": "hosts",
+        "tag": "hosts",
+        "predefined": {
+          "dns.alidns.com": [
+            "223.5.5.5",
+            "223.6.6.6",
+            "2400:3200::1",
+            "2400:3200:baba::1"
+          ],
+          "doh.pub": [
+            "1.12.12.12",
+            "120.53.53.53",
+            "2402:4e00::",
+            "2402:4e00:1::"
+          ],
+          "dns.google": [
+            "8.8.8.8",
+            "8.8.4.4",
+            "2001:4860:4860::8888",
+            "2001:4860:4860::8844"
+          ]
+        }
+      },
+      {
+        "tag": "google",
+        "type": "https",
+        "server": "dns.google",
+        "domain_resolver": "hosts",
+        "detour": "✈️proxy"
+      },
+      {
+        "tag": "ali",
+        "type": "https",
+        "server": "dns.alidns.com",
+        "domain_resolver": "hosts"
+      },
+      {
+        "tag": "pub",
+        "type": "https",
+        "server": "doh.pub",
+        "domain_resolver": "hosts"
+      }
+    ],
+    "rules": [
+      {
+        "clash_mode": "Direct",
+        "action": "route",
+        "server": "ali"
+      },
+      {
+        "clash_mode": "Global",
+        "action": "route",
+        "server": "google"
+      },
+      {
+        "rule_set": [
+          "adblock",
+          "BlockHttpDNS"
+        ],
+        "action": "predefined",
+        "rcode": "NXDOMAIN"
+      },
+      {
+        "query_type": [
+          "SVCB",
+          "HTTPS"
+        ],
+        "action": "predefined",
+        "rcode": "NOERROR"
+      },
+      {
+        "rule_set": [
+          "apple@cn",
+          "microsoft@cn",
+          "category-games@cn",
+          "cn"
+        ],
+        "action": "evaluate",
+        "server": "ali",
+        "tag": "ali-res"
+      },
+      {
+        "rule_set": [
+          "apple@cn",
+          "microsoft@cn",
+          "category-games@cn",
+          "cn"
+        ],
+        "action": "evaluate",
+        "server": "pub",
+        "tag": "pub-res"
+      },
+      {
+        "match_response": "ali-res",
+        "action": "respond",
+        "race": true
+      },
+      {
+        "match_response": "pub-res",
+        "action": "respond",
+        "race": true
+      },
+      {
+        "query_type": [
+          "A",
+          "AAAA"
+        ],
+        "action": "route",
+        "server": "google"
+      }
+    ],
+    "final": "google",
+    "cache_capacity": 16384,
+    "optimistic": {
+      "enabled": true,
+      "timeout": "5m0s"
+    },
+    "strategy": "ipv4_only"
+  },
+  "http_clients": [
+    {
+      "tag": "default",
+      "version": 2,
+      "stream_receive_window": 0,
+      "connection_receive_window": 0
+    },
+    {
+      "tag": "rules-download",
+      "version": 2,
+      "detour": "⚡️Auto"
+    }
+  ],
+  "inbounds": [
+    {
+      "type": "tun",
+      "tag": "tun-in",
+      "address": [
+        "172.19.0.1/30"
+      ],
+      "auto_route": true,
+      "strict_route": false,
+      "endpoint_independent_nat": true,
+      "mtu": 1500,
+      "stack": "system",
+      "platform": {
+        "http_proxy": {
+          "enabled": true,
+          "server": "127.0.0.1",
+          "server_port": 7890
+        }
+      }
+    },
+    {
+      "type": "mixed",
+      "tag": "mixed-in",
+      "listen": "::",
+      "listen_port": 7890
+    }
+  ],
+  "route": {
+    "rules": [
+      {
+        "type": "logical",
+        "mode": "or",
+        "rules": [
+          {
+            "port": 53
+          },
+          {
+            "protocol": "dns"
+          }
+        ],
+        "action": "hijack-dns"
+      },
+      {
+        "ip_version": 6,
+        "action": "reject"
+      },
+      {
+        "protocol": "ntp",
+        "action": "route",
+        "outbound": "direct"
+      },
+      {
+        "ip_is_private": true,
+        "action": "route",
+        "outbound": "direct"
+      },
+      {
+        "rule_set": "vpn",
+        "outbound": "vpn"
+      },
+      {
+        "port": 993,
+        "rule_set": "cn_ip",
+        "action": "reject"
+      },
+      {
+        "inbound": "tun-in",
+        "process_name": [
+          "Motrix",
+          "aria2c"
+        ],
+        "action": "route",
+        "outbound": "direct"
+      },
+      {
+        "inbound": "tun-in",
+        "rule_set": "cn_ip",
+        "action": "route",
+        "outbound": "direct"
+      },
+      {
+        "action": "sniff",
+        "timeout": "100ms"
+      },
+      {
+        "clash_mode": "Global",
+        "action": "route",
+        "outbound": "✈️proxy"
+      },
+      {
+        "clash_mode": "Direct",
+        "action": "route",
+        "outbound": "direct"
+      },
+      {
+        "rule_set": [
+          "adblock",
+          "BlockHttpDNS"
+        ],
+        "action": "reject",
+        "no_drop": true
+      },
+      {
+        "rule_set": [
+          "apple@cn",
+          "microsoft@cn",
+          "category-games@cn",
+          "cn"
+        ],
+        "action": "route",
+        "outbound": "direct"
+      },
+      {
+        "type": "logical",
+        "mode": "or",
+        "rules": [
+          {
+            "protocol": [
+              "quic",
+              "stun"
+            ]
+          },
+          {
+            "network": "udp",
+            "port": 443
+          },
+          {
+            "port": [
+              3478,
+              5349,
+              19302,
+              19303,
+              19304,
+              19305,
+              19306,
+              19307,
+              19308,
+              19309
+            ]
+          }
+        ],
+        "action": "reject",
+        "no_drop": true
+      },
+      {
+        "rule_set": "spotify",
+        "action": "route",
+        "outbound": "🎶Spotify"
+      },
+      {
+        "rule_set": "ai",
+        "action": "route",
+        "outbound": "🤖AI"
+      },
+      {
+        "rule_set": "tiktok",
+        "action": "route",
+        "outbound": "🎵TikTok"
+      },
+      {
+        "rule_set": "instagram",
+        "action": "route",
+        "outbound": "📷Instagram"
+      },
+      {
+        "rule_set": "paypal",
+        "action": "route",
+        "outbound": "💳PayPal"
+      },
+      {
+        "rule_set": "emby",
+        "action": "route",
+        "outbound": "📺Emby"
+      },
+      {
+        "rule_set": [
+          "youtube",
+          "netflix",
+          "disney",
+          "hbo",
+          "hulu"
+        ],
+        "action": "route",
+        "outbound": "🎬Media"
+      },
+      {
+        "rule_set": [
+          "telegram",
+          "telegram_ip"
+        ],
+        "action": "route",
+        "outbound": "✈️Telegram"
+      }
+    ],
+    "auto_detect_interface": true,
+    "find_process": true,
+    "default_domain_resolver": "ali",
+    "default_http_client": "default",
+    "final": "🕸️final",
+    "rule_set": [
+      {
+        "type": "remote",
+        "tag": "BlockHttpDNS",
+        "url": "https://raw.githubusercontent.com/senshinya/singbox_ruleset/main/rule/BlockHttpDNS/BlockHttpDNS.srs",
+        "update_interval": "48h0m0s",
+        "http_client": "rules-download",
+        "format": "binary"
+      },
+      {
+        "type": "remote",
+        "tag": "apple@cn",
+        "url": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/apple@cn.srs",
+        "update_interval": "48h0m0s",
+        "http_client": "rules-download",
+        "format": "binary"
+      },
+      {
+        "type": "remote",
+        "tag": "microsoft@cn",
+        "url": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/microsoft@cn.srs",
+        "update_interval": "48h0m0s",
+        "http_client": "rules-download",
+        "format": "binary"
+      },
+      {
+        "type": "remote",
+        "tag": "category-games@cn",
+        "url": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/category-games@cn.srs",
+        "update_interval": "48h0m0s",
+        "http_client": "rules-download",
+        "format": "binary"
+      },
+      {
+        "type": "remote",
+        "tag": "cn",
+        "url": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/cn.srs",
+        "update_interval": "48h0m0s",
+        "http_client": "rules-download",
+        "format": "binary"
+      },
+      {
+        "type": "remote",
+        "tag": "telegram",
+        "url": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/telegram.srs",
+        "update_interval": "48h0m0s",
+        "http_client": "rules-download",
+        "format": "binary"
+      },
+      {
+        "type": "remote",
+        "tag": "youtube",
+        "url": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/youtube.srs",
+        "update_interval": "48h0m0s",
+        "http_client": "rules-download",
+        "format": "binary"
+      },
+      {
+        "type": "remote",
+        "tag": "netflix",
+        "url": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/netflix.srs",
+        "update_interval": "48h0m0s",
+        "http_client": "rules-download",
+        "format": "binary"
+      },
+      {
+        "type": "remote",
+        "tag": "spotify",
+        "url": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/spotify.srs",
+        "update_interval": "48h0m0s",
+        "http_client": "rules-download",
+        "format": "binary"
+      },
+      {
+        "type": "remote",
+        "tag": "tiktok",
+        "url": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/tiktok.srs",
+        "update_interval": "48h0m0s",
+        "http_client": "rules-download",
+        "format": "binary"
+      },
+      {
+        "type": "remote",
+        "tag": "instagram",
+        "url": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/instagram.srs",
+        "update_interval": "48h0m0s",
+        "http_client": "rules-download",
+        "format": "binary"
+      },
+      {
+        "type": "remote",
+        "tag": "paypal",
+        "url": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/paypal.srs",
+        "update_interval": "48h0m0s",
+        "http_client": "rules-download",
+        "format": "binary"
+      },
+      {
+        "type": "remote",
+        "tag": "disney",
+        "url": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/disney.srs",
+        "update_interval": "48h0m0s",
+        "http_client": "rules-download",
+        "format": "binary"
+      },
+      {
+        "type": "remote",
+        "tag": "hbo",
+        "url": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/hbo.srs",
+        "update_interval": "48h0m0s",
+        "http_client": "rules-download",
+        "format": "binary"
+      },
+      {
+        "type": "remote",
+        "tag": "hulu",
+        "url": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/hulu.srs",
+        "update_interval": "48h0m0s",
+        "http_client": "rules-download",
+        "format": "binary"
+      },
+      {
+        "type": "remote",
+        "tag": "ai",
+        "format": "source",
+        "url": "https://raw.githubusercontent.com/Repcz/Tool/X/sing-box/Rules/AI.json",
+        "update_interval": "24h0m0s",
+        "http_client": "rules-download"
+      },
+      {
+        "type": "remote",
+        "tag": "emby",
+        "format": "binary",
+        "url": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/category-emby.srs",
+        "update_interval": "48h0m0s",
+        "http_client": "rules-download"
+      },
+      {
+        "type": "remote",
+        "tag": "adblock",
+        "format": "source",
+        "url": "https://raw.githubusercontent.com/TG-Twilight/AWAvenue-Ads-Rule/main/Filters/AWAvenue-Ads-Rule-Singbox.json",
+        "update_interval": "48h0m0s",
+        "http_client": "rules-download"
+      },
+      {
+        "type": "remote",
+        "tag": "telegram_ip",
+        "format": "binary",
+        "url": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geoip/telegram.srs",
+        "update_interval": "48h0m0s",
+        "http_client": "rules-download"
+      },
+      {
+        "type": "remote",
+        "tag": "cn_ip",
+        "format": "binary",
+        "url": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geoip/cn.srs",
+        "update_interval": "48h0m0s",
+        "http_client": "rules-download"
+      },
+      {
+        "tag": "vpn",
+        "type": "remote",
+        "format": "source",
+        "url": "https://testingcf.jsdelivr.net/gh/damieai/my-singbox-rules@main/source/ip-direct.json"
+      }
+    ]
+  },
+  "outbounds": [
+    {
+      "tag": "✈️proxy",
+      "type": "selector",
+      "interrupt_exist_connections": true,
+      "outbounds": [
+        "⚡️Auto",
+        "🇭🇰Hong Kong",
+        "🇹🇼Taiwan",
+        "🇯🇵Japan",
+        "🇰🇷Korea",
+        "🇸🇬Singapore",
+        "🇺🇸United States",
+        "🌍Other",
+        "direct"
+      ],
+      "default": "⚡️Auto"
+    },
+    {
+      "tag": "🤖AI",
+      "type": "selector",
+      "interrupt_exist_connections": true,
+      "outbounds": [
+        "⚡️Auto",
+        "🇭🇰Hong Kong",
+        "🇹🇼Taiwan",
+        "🇯🇵Japan",
+        "🇰🇷Korea",
+        "🇸🇬Singapore",
+        "🇺🇸United States"
+      ],
+      "default": "⚡️Auto"
+    },
+    {
+      "tag": "🎵TikTok",
+      "type": "selector",
+      "interrupt_exist_connections": true,
+      "outbounds": [
+        "✈️proxy",
+        "⚡️Auto"
+      ],
+      "default": "✈️proxy"
+    },
+    {
+      "tag": "✈️Telegram",
+      "type": "selector",
+      "interrupt_exist_connections": true,
+      "outbounds": [
+        "✈️proxy",
+        "⚡️Auto"
+      ],
+      "default": "✈️proxy"
+    },
+    {
+      "tag": "📷Instagram",
+      "type": "selector",
+      "interrupt_exist_connections": true,
+      "outbounds": [
+        "✈️proxy",
+        "⚡️Auto"
+      ],
+      "default": "✈️proxy"
+    },
+    {
+      "tag": "💳PayPal",
+      "type": "selector",
+      "interrupt_exist_connections": true,
+      "outbounds": [
+        "✈️proxy",
+        "⚡️Auto"
+      ],
+      "default": "✈️proxy"
+    },
+    {
+      "tag": "📺Emby",
+      "type": "selector",
+      "interrupt_exist_connections": true,
+      "outbounds": [
+        "direct",
+        "✈️proxy",
+        "⚡️Auto"
+      ],
+      "default": "✈️proxy"
+    },
+    {
+      "tag": "🎶Spotify",
+      "type": "selector",
+      "interrupt_exist_connections": true,
+      "outbounds": [
+        "direct",
+        "✈️proxy",
+        "⚡️Auto"
+      ],
+      "default": "direct"
+    },
+    {
+      "tag": "🎬Media",
+      "type": "selector",
+      "interrupt_exist_connections": true,
+      "outbounds": [
+        "✈️proxy",
+        "⚡️Auto"
+      ],
+      "default": "✈️proxy"
+    },
+    {
+      "tag": "🇭🇰Hong Kong",
+      "type": "urltest",
+      "outbounds": [
+        "{all}"
+      ],
+      "url": "https://www.gstatic.com/generate_204",
+      "interval": "3m",
+      "tolerance": 25,
+      "interrupt_exist_connections": true,
+      "filter": [
+        {
+          "action": "include",
+          "keywords": [
+            "🇭🇰|HK|hk|香港|港|HongKong"
+          ]
+        }
+      ]
+    },
+    {
+      "tag": "🇹🇼Taiwan",
+      "type": "urltest",
+      "outbounds": [
+        "{all}"
+      ],
+      "url": "https://www.gstatic.com/generate_204",
+      "interval": "3m",
+      "tolerance": 25,
+      "interrupt_exist_connections": true,
+      "filter": [
+        {
+          "action": "include",
+          "keywords": [
+            "🇹🇼|TW|tw|台湾|臺灣|台|Taiwan"
+          ]
+        }
+      ]
+    },
+    {
+      "tag": "🇯🇵Japan",
+      "type": "urltest",
+      "outbounds": [
+        "{all}"
+      ],
+      "url": "https://www.gstatic.com/generate_204",
+      "interval": "3m",
+      "tolerance": 25,
+      "interrupt_exist_connections": true,
+      "filter": [
+        {
+          "action": "include",
+          "keywords": [
+            "🇯🇵|JP|jp|日本|日|Japan"
+          ]
+        }
+      ]
+    },
+    {
+      "tag": "🇰🇷Korea",
+      "type": "urltest",
+      "outbounds": [
+        "{all}"
+      ],
+      "url": "https://www.gstatic.com/generate_204",
+      "interval": "3m",
+      "tolerance": 25,
+      "interrupt_exist_connections": true,
+      "filter": [
+        {
+          "action": "include",
+          "keywords": [
+            "🇰🇷|KR|kr|韩国|韓國|Korea|Seoul"
+          ]
+        }
+      ]
+    },
+    {
+      "tag": "🇸🇬Singapore",
+      "type": "urltest",
+      "outbounds": [
+        "{all}"
+      ],
+      "url": "https://www.gstatic.com/generate_204",
+      "interval": "3m",
+      "tolerance": 25,
+      "interrupt_exist_connections": true,
+      "filter": [
+        {
+          "action": "include",
+          "keywords": [
+            "🇸🇬|SG|sg|新加坡|狮|Singapore"
+          ]
+        }
+      ]
+    },
+    {
+      "tag": "🇺🇸United States",
+      "type": "urltest",
+      "outbounds": [
+        "{all}"
+      ],
+      "url": "https://www.gstatic.com/generate_204",
+      "interval": "3m",
+      "tolerance": 25,
+      "interrupt_exist_connections": true,
+      "filter": [
+        {
+          "action": "include",
+          "keywords": [
+            "🇺🇸|US|us|美国|美|United States"
+          ]
+        }
+      ]
+    },
+    {
+      "tag": "🌍Other",
+      "type": "urltest",
+      "outbounds": [
+        "{all}"
+      ],
+      "url": "https://www.gstatic.com/generate_204",
+      "interval": "3m",
+      "tolerance": 25,
+      "interrupt_exist_connections": true,
+      "filter": [
+        {
+          "action": "exclude",
+          "keywords": [
+            "🇭🇰|HK|hk|香港|香|🇹🇼|TW|tw|台湾|台|🇸🇬|SG|sg|新加坡|狮|🇯🇵|JP|jp|日本|日|🇺🇸|US|us|美国|美|🇰🇷|KR|kr|韩国|韓國|Korea|Seoul"
+          ]
+        }
+      ]
+    },
+    {
+      "tag": "⚡️Auto",
+      "type": "urltest",
+      "outbounds": [
+        "{all}"
+      ],
+      "url": "https://www.gstatic.com/generate_204",
+      "interval": "3m",
+      "tolerance": 25,
+      "interrupt_exist_connections": true,
+      "filter": [
+        {
+          "action": "exclude",
+          "keywords": [
+            "网站|地址|剩余|过期|时间|有效"
+          ]
+        }
+      ]
+    },
+    {
+      "tag": "🕸️final",
+      "type": "selector",
+      "interrupt_exist_connections": true,
+      "outbounds": [
+        "⚡️Auto",
+        "✈️proxy",
+        "direct"
+      ],
+      "default": "⚡️Auto"
+    },
+    {
+      "tag": "direct",
+      "type": "direct"
+    },
+    {
+      "tag": "vpn",
+      "type": "selector",
+      "outbounds": [
+        "⚡️Auto",
+        "direct",
+        "{all}"
+      ],
+      "default": "⚡️Auto"
+    }
+  ],
+  "services": [
+    {
+      "type": "api",
+      "listen": "127.0.0.1",
+      "listen_port": 9090,
+      "secret": "",
+      "dashboard": {
+        "enabled": true,
+        "http_client": "default",
+        "download_url": "https://ghfast.top/https://github.com/SagerNet/sing-box-dashboard/archive/refs/heads/gh-pages.zip"
+      }
+    }
+  ],
+  "experimental": {
+    "cache_file": {
+      "enabled": true,
+      "store_fakeip": false,
+      "store_dns": true
+    }
+  }
+}
