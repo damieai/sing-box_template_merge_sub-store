@@ -124,8 +124,7 @@
     "optimistic": {
       "enabled": true,
       "timeout": "5m0s"
-    },
-    "strategy": "ipv4_only"
+    }
   },
   "http_clients": [
     {
@@ -145,20 +144,13 @@
       "type": "tun",
       "tag": "tun-in",
       "address": [
-        "172.19.0.1/30"
+        "172.19.0.1/30",
+        "fdfe:dcba:9876::1/126"
       ],
       "auto_route": true,
       "strict_route": false,
       "endpoint_independent_nat": true,
-      "mtu": 1500,
-      "stack": "system",
-      "platform": {
-        "http_proxy": {
-          "enabled": true,
-          "server": "127.0.0.1",
-          "server_port": 7890
-        }
-      }
+      "mtu": 1500
     },
     {
       "type": "mixed",
@@ -183,8 +175,27 @@
         "action": "hijack-dns"
       },
       {
-        "ip_version": 6,
-        "action": "reject"
+        "type": "logical",
+        "mode": "and",
+        "rules": [
+          {
+            "ip_version": 6
+          },
+          {
+            "ip_cidr": [
+              "fc00::/18"
+            ],
+            "invert": true
+          },
+          {
+            "default_interface_address": [
+              "2000::/3"
+            ],
+            "invert": true
+          }
+        ],
+        "action": "reject",
+        "no_drop": true
       },
       {
         "protocol": "ntp",
