@@ -42,13 +42,19 @@
         "tag": "ali",
         "type": "https",
         "server": "dns.alidns.com",
-        "domain_resolver": "hosts"
+        "domain_resolver": {
+          "server": "hosts",
+          "strategy": "prefer_ipv4"
+        }
       },
       {
         "tag": "pub",
         "type": "https",
         "server": "doh.pub",
-        "domain_resolver": "hosts"
+        "domain_resolver": {
+          "server": "hosts",
+          "strategy": "prefer_ipv4"
+        }
       },
       {
         "tag": "fakeip",
@@ -59,48 +65,88 @@
     ],
     "rules": [
       {
-        "clash_mode": "Direct",
+        "clash_mode": "Global",
+        "query_type": [
+          "A",
+          "AAAA"
+        ],
         "action": "route",
-        "server": "ali"
+        "server": "fakeip",
+        "rewrite_ttl": 1
       },
       {
         "clash_mode": "Global",
         "action": "route",
-        "server": "fakeip"
+        "server": "google"
       },
       {
-        "rule_set": [
-          "adblock",
-          "BlockHttpDNS"
+        "type": "logical",
+        "mode": "and",
+        "rules": [
+          {
+            "clash_mode": "Direct",
+            "invert": true
+          },
+          {
+            "rule_set": "adblock"
+          }
         ],
         "action": "predefined",
         "rcode": "NXDOMAIN"
       },
       {
-        "query_type": [
-          "SVCB",
-          "HTTPS"
+        "type": "logical",
+        "mode": "and",
+        "rules": [
+          {
+            "clash_mode": "Direct",
+            "invert": true
+          },
+          {
+            "query_type": [
+              "SVCB",
+              "HTTPS"
+            ]
+          }
         ],
         "action": "predefined",
         "rcode": "NOERROR"
       },
       {
-        "rule_set": [
-          "apple@cn",
-          "microsoft@cn",
-          "category-games@cn",
-          "cn"
+        "type": "logical",
+        "mode": "or",
+        "rules": [
+          {
+            "clash_mode": "Direct"
+          },
+          {
+            "rule_set": [
+              "apple@cn",
+              "microsoft@cn",
+              "category-games@cn",
+              "cn"
+            ]
+          }
         ],
         "action": "evaluate",
         "server": "ali",
         "tag": "ali-res"
       },
       {
-        "rule_set": [
-          "apple@cn",
-          "microsoft@cn",
-          "category-games@cn",
-          "cn"
+        "type": "logical",
+        "mode": "or",
+        "rules": [
+          {
+            "clash_mode": "Direct"
+          },
+          {
+            "rule_set": [
+              "apple@cn",
+              "microsoft@cn",
+              "category-games@cn",
+              "cn"
+            ]
+          }
         ],
         "action": "evaluate",
         "server": "pub",
@@ -108,13 +154,42 @@
       },
       {
         "match_response": "ali-res",
+        "response_rcode": "NOERROR",
         "action": "respond",
         "race": true
       },
       {
         "match_response": "pub-res",
+        "response_rcode": "NOERROR",
         "action": "respond",
         "race": true
+      },
+      {
+        "match_response": "ali-res",
+        "action": "respond"
+      },
+      {
+        "match_response": "pub-res",
+        "action": "respond"
+      },
+      {
+        "type": "logical",
+        "mode": "or",
+        "rules": [
+          {
+            "clash_mode": "Direct"
+          },
+          {
+            "rule_set": [
+              "apple@cn",
+              "microsoft@cn",
+              "category-games@cn",
+              "cn"
+            ]
+          }
+        ],
+        "action": "predefined",
+        "rcode": "SERVFAIL"
       },
       {
         "query_type": [
@@ -131,7 +206,8 @@
     "optimistic": {
       "enabled": true,
       "timeout": "5m0s"
-    }
+    },
+    "strategy": "prefer_ipv4"
   },
   "http_clients": [
     {
@@ -156,7 +232,6 @@
       ],
       "auto_route": true,
       "strict_route": false,
-      "endpoint_independent_nat": true,
       "mtu": 1500
     },
     {
@@ -182,42 +257,19 @@
         "action": "hijack-dns"
       },
       {
-        "type": "logical",
-        "mode": "and",
-        "rules": [
-          {
-            "ip_version": 6
-          },
-          {
-            "ip_cidr": [
-              "fc00::/18"
-            ],
-            "invert": true
-          },
-          {
-            "default_interface_address": [
-              "2000::/3"
-            ],
-            "invert": true
-          }
-        ],
-        "action": "reject",
-        "no_drop": true
-      },
-      {
-        "protocol": "ntp",
-        "action": "route",
-        "outbound": "direct"
-      },
-      {
         "ip_is_private": true,
         "action": "route",
         "outbound": "direct"
       },
       {
-        "port": 993,
-        "rule_set": "cn_ip",
-        "action": "reject"
+        "clash_mode": "Direct",
+        "action": "route",
+        "outbound": "direct"
+      },
+      {
+        "clash_mode": "Global",
+        "action": "route",
+        "outbound": "✈️proxy"
       },
       {
         "inbound": "tun-in",
@@ -229,7 +281,6 @@
         "outbound": "direct"
       },
       {
-        "inbound": "tun-in",
         "rule_set": "cn_ip",
         "action": "route",
         "outbound": "direct"
@@ -239,20 +290,12 @@
         "timeout": "100ms"
       },
       {
-        "clash_mode": "Global",
-        "action": "route",
-        "outbound": "✈️proxy"
-      },
-      {
-        "clash_mode": "Direct",
+        "protocol": "ntp",
         "action": "route",
         "outbound": "direct"
       },
       {
-        "rule_set": [
-          "adblock",
-          "BlockHttpDNS"
-        ],
+        "rule_set": "adblock",
         "action": "reject",
         "no_drop": true
       },
@@ -265,38 +308,6 @@
         ],
         "action": "route",
         "outbound": "direct"
-      },
-      {
-        "type": "logical",
-        "mode": "or",
-        "rules": [
-          {
-            "protocol": [
-              "quic",
-              "stun"
-            ]
-          },
-          {
-            "network": "udp",
-            "port": 443
-          },
-          {
-            "port": [
-              3478,
-              5349,
-              19302,
-              19303,
-              19304,
-              19305,
-              19306,
-              19307,
-              19308,
-              19309
-            ]
-          }
-        ],
-        "action": "reject",
-        "no_drop": true
       },
       {
         "rule_set": "spotify",
@@ -350,17 +361,13 @@
     ],
     "auto_detect_interface": true,
     "find_process": true,
-    "default_domain_resolver": "ali",
+    "default_domain_resolver": {
+      "server": "ali",
+      "strategy": "prefer_ipv4"
+    },
     "default_http_client": "default",
     "final": "🕸️final",
     "rule_set": [
-      {
-        "type": "remote",
-        "tag": "BlockHttpDNS",
-        "url": "https://raw.githubusercontent.com/senshinya/singbox_ruleset/main/rule/BlockHttpDNS/BlockHttpDNS.srs",
-        "update_interval": "48h0m0s",
-        "http_client": "rules-download"
-      },
       {
         "type": "remote",
         "tag": [
@@ -537,7 +544,7 @@
       "url": "https://www.gstatic.com/generate_204",
       "interval": "3m",
       "tolerance": 25,
-      "interrupt_exist_connections": true
+      "interrupt_exist_connections": false
     },
     {
       "tag": "🇹🇼Taiwan",
@@ -546,7 +553,7 @@
       "url": "https://www.gstatic.com/generate_204",
       "interval": "3m",
       "tolerance": 25,
-      "interrupt_exist_connections": true
+      "interrupt_exist_connections": false
     },
     {
       "tag": "🇯🇵Japan",
@@ -555,7 +562,7 @@
       "url": "https://www.gstatic.com/generate_204",
       "interval": "3m",
       "tolerance": 25,
-      "interrupt_exist_connections": true
+      "interrupt_exist_connections": false
     },
     {
       "tag": "🇰🇷Korea",
@@ -564,7 +571,7 @@
       "url": "https://www.gstatic.com/generate_204",
       "interval": "3m",
       "tolerance": 25,
-      "interrupt_exist_connections": true
+      "interrupt_exist_connections": false
     },
     {
       "tag": "🇸🇬Singapore",
@@ -573,7 +580,7 @@
       "url": "https://www.gstatic.com/generate_204",
       "interval": "3m",
       "tolerance": 25,
-      "interrupt_exist_connections": true
+      "interrupt_exist_connections": false
     },
     {
       "tag": "🇺🇸United States",
@@ -582,7 +589,7 @@
       "url": "https://www.gstatic.com/generate_204",
       "interval": "3m",
       "tolerance": 25,
-      "interrupt_exist_connections": true
+      "interrupt_exist_connections": false
     },
     {
       "tag": "🌍Other",
@@ -591,7 +598,7 @@
       "url": "https://www.gstatic.com/generate_204",
       "interval": "3m",
       "tolerance": 25,
-      "interrupt_exist_connections": true
+      "interrupt_exist_connections": false
     },
     {
       "tag": "⚡️Auto",
@@ -600,7 +607,7 @@
       "url": "https://www.gstatic.com/generate_204",
       "interval": "3m",
       "tolerance": 25,
-      "interrupt_exist_connections": true
+      "interrupt_exist_connections": false
     },
     {
       "tag": "🕸️final",
