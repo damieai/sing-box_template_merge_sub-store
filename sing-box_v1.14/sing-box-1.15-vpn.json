@@ -72,15 +72,6 @@
         "action": "route",
         "outbound": "direct"
       },
-      {
-        "type": "logical",
-        "mode": "and",
-        "rules": [
-          {"protocol": "quic"},
-          {"rule_set": "cn_ip", "invert": true}
-        ],
-        "action": "reject"
-      },
       {"rule_set": "youtube", "action": "route", "outbound": "🎬Media"},
       {"rule_set": "google", "action": "route", "outbound": "🤖AI"},
       {"rule_set": "spotify", "action": "route", "outbound": "🎶Spotify"},
