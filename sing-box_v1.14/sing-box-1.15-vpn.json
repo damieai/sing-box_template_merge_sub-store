@@ -18,41 +18,23 @@
     ],
     "rules": [
       {"clash_mode": "Global", "action": "route", "server": "google"},
-      {
-        "type": "logical",
-        "mode": "and",
-        "rules": [{"clash_mode": "Direct", "invert": true}, {"rule_set": "adblock"}],
-        "action": "predefined",
-        "rcode": "NXDOMAIN"
-      },
-      {
-        "type": "logical",
-        "mode": "and",
-        "rules": [{"clash_mode": "Direct", "invert": true}, {"query_type": ["SVCB", "HTTPS"]}],
-        "action": "predefined",
-        "rcode": "NOERROR"
-      },
-      {
-        "type": "logical",
-        "mode": "or",
-        "rules": [{"clash_mode": "Direct"}, {"rule_set": ["apple@cn", "microsoft@cn", "category-games@cn", "cn"]}],
-        "action": "evaluate",
-        "server": "ali",
-        "tag": "ali-res"
-      },
-      {
-        "type": "logical",
-        "mode": "or",
-        "rules": [{"clash_mode": "Direct"}, {"rule_set": ["apple@cn", "microsoft@cn", "category-games@cn", "cn"]}],
-        "action": "evaluate",
-        "server": "pub",
-        "tag": "pub-res"
-      },
+      {"clash_mode": "Direct", "action": "evaluate", "server": "ali", "tag": "direct-ali"},
+      {"clash_mode": "Direct", "action": "evaluate", "server": "pub", "tag": "direct-pub"},
+      {"match_response": "direct-ali", "response_rcode": "NOERROR", "action": "respond", "race": true},
+      {"match_response": "direct-pub", "response_rcode": "NOERROR", "action": "respond", "race": true},
+      {"match_response": "direct-ali", "action": "respond"},
+      {"match_response": "direct-pub", "action": "respond"},
+      {"clash_mode": "Direct", "action": "predefined", "rcode": "SERVFAIL"},
+      {"rule_set": "adblock", "action": "predefined", "rcode": "NXDOMAIN"},
+      {"query_type": ["SVCB", "HTTPS"], "action": "predefined", "rcode": "NOERROR"},
+      {"rule_set": "google", "action": "route", "server": "google"},
+      {"rule_set": ["apple@cn", "microsoft@cn", "category-games@cn", "cn"], "action": "evaluate", "server": "ali", "tag": "ali-res"},
+      {"rule_set": ["apple@cn", "microsoft@cn", "category-games@cn", "cn"], "action": "evaluate", "server": "pub", "tag": "pub-res"},
       {"match_response": "ali-res", "response_rcode": "NOERROR", "action": "respond", "race": true},
       {"match_response": "pub-res", "response_rcode": "NOERROR", "action": "respond", "race": true},
       {"match_response": "ali-res", "action": "respond"},
       {"match_response": "pub-res", "action": "respond"},
-      {"clash_mode": "Direct", "action": "predefined", "rcode": "SERVFAIL"},
+      {"rule_set": ["apple@cn", "microsoft@cn", "category-games@cn", "cn"], "action": "predefined", "rcode": "SERVFAIL"},
       {"query_type": ["A", "AAAA"], "action": "route", "server": "google"}
     ],
     "final": "google",
@@ -66,7 +48,7 @@
     {"tag": "rules-download", "version": 2, "detour": "⚡️Auto"}
   ],
   "inbounds": [
-    {"type": "tun", "tag": "tun-in", "address": ["172.19.0.1/30", "fdfe:dcba:9876::1/126"], "auto_route": true, "strict_route": false, "mtu": 1500},
+    {"type": "tun", "tag": "tun-in", "address": ["172.19.0.1/30", "fdfe:dcba:9876::1/126"], "auto_route": true, "strict_route": false, "mtu": 1400},
     {"type": "mixed", "tag": "mixed-in", "listen": "::", "listen_port": 7890}
   ],
   "route": {
@@ -75,15 +57,32 @@
       {"rule_set": "vpn", "outbound": "vpn"},
       {"ip_is_private": true, "action": "route", "outbound": "direct"},
       {"clash_mode": "Direct", "action": "route", "outbound": "direct"},
-      {"clash_mode": "Global", "action": "route", "outbound": "✈️proxy"},
       {"inbound": "tun-in", "process_name": ["Motrix", "aria2c"], "action": "route", "outbound": "direct"},
-      {"rule_set": "cn_ip", "action": "route", "outbound": "direct"},
       {"action": "sniff", "timeout": "100ms"},
+      {"clash_mode": "Global", "action": "route", "outbound": "✈️proxy"},
       {"protocol": "ntp", "action": "route", "outbound": "direct"},
       {"rule_set": "adblock", "action": "reject", "no_drop": true},
+      {
+        "type": "logical",
+        "mode": "and",
+        "rules": [
+          {"rule_set": ["apple@cn", "microsoft@cn", "category-games@cn", "cn"]},
+          {"rule_set": "google", "invert": true}
+        ],
+        "action": "route",
+        "outbound": "direct"
+      },
+      {
+        "type": "logical",
+        "mode": "and",
+        "rules": [
+          {"protocol": "quic"},
+          {"rule_set": "cn_ip", "invert": true}
+        ],
+        "action": "reject"
+      },
       {"rule_set": "youtube", "action": "route", "outbound": "🎬Media"},
       {"rule_set": "google", "action": "route", "outbound": "🤖AI"},
-      {"rule_set": ["apple@cn", "microsoft@cn", "category-games@cn", "cn"], "action": "route", "outbound": "direct"},
       {"rule_set": "spotify", "action": "route", "outbound": "🎶Spotify"},
       {"rule_set": "ai", "action": "route", "outbound": "🤖AI"},
       {"rule_set": "tiktok", "action": "route", "outbound": "🎵TikTok"},
@@ -91,7 +90,8 @@
       {"rule_set": "paypal", "action": "route", "outbound": "💳PayPal"},
       {"rule_set": "emby", "action": "route", "outbound": "📺Emby"},
       {"rule_set": ["netflix", "disney", "hbo", "hulu"], "action": "route", "outbound": "🎬Media"},
-      {"rule_set": ["telegram", "telegram_ip"], "action": "route", "outbound": "✈️Telegram"}
+      {"rule_set": ["telegram", "telegram_ip"], "action": "route", "outbound": "✈️Telegram"},
+      {"rule_set": "cn_ip", "action": "route", "outbound": "direct"}
     ],
     "auto_detect_interface": true,
     "find_process": true,
